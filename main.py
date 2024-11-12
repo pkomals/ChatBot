@@ -1,120 +1,12 @@
 # main.py
-# from fastapi import FastAPI, Request
-# from fastapi.responses import JSONResponse
-# # import db
-# app = FastAPI()
-
-# @app.get("/")
-# def read_root():
-#     return {"message": "Welcome to the Food Tracking Bot!"}
-
-# @app.post("/webhook")
-# async def handle_request(request: Request):
-#     try:
-#         print("Webhook called!")
-#         # Parse the JSON payload from the request
-#         payload = await request.json()
-#         print(f"Payload received: {payload}")
-        
-#         # Extracting intent and parameters
-#         intent = payload['queryResult']['intent']['displayName']
-#         parameters = payload['queryResult']['parameters']
-        
-#         # Handle the "track.order - context: ongoing-tracking" intent
-#         if intent == "track.order - context: ongoing-tracking":
-#             order_id = parameters['order_id']
-#             status = db.get_order_status(order_id)
-            
-#             if status:
-#                 fulfillment_text = f"The status for order ID {order_id} is: {status}."
-#             else:
-#                 fulfillment_text = f"No order found with ID {order_id}."
-            
-#             return JSONResponse(content={"fulfillmentText": fulfillment_text})
-        
-#         # Handle other intents if needed
-#         return JSONResponse(content={"fulfillmentText": "Intent not recognized."})
-    
-#     except Exception as e:
-#         print(f"Error in handling request: {e}")
-#         return JSONResponse(content={"fulfillmentText": "An error occurred while processing your request."}, status_code=500)
-
-# from fastapi import FastAPI, Request
-# from fastapi.responses import JSONResponse
-# import db
-
-# app = FastAPI()
-
-# @app.post("/")
-# async def handle_request(request: Request):
-#     payload = await request.json()
-
-#     # Extract the necessary information from the payload
-#     # based on the structure of the WebhookRequest from Dialogflow
-#     intent = payload['queryResult']['intent']['displayName']
-#     parameters = payload['queryResult']['parameters']
-#     output_contexts = payload['queryResult']['outputContexts']
-#     if intent=="track.order - context: ongoing-tracking":
-#          response= track_order(parameters)
-#          return response
-  
-    
-# def track_order(parameters:dict):
-#     order_id= parameters['order_id']
-
-#     order_status= db.get_order_status(order_id)
-
-#     if order_status:
-#         fulfillment_text=f"The order status for order is {order_id}is :{order_status}"
-
-#     else:
-#         fulfillment_text=f"No order found with order id {order_id}"
-
-#     return JSONResponse(content={
-#         "fulfillmentText": fulfillment_text})
-
-# from fastapi import FastAPI, Request
-# from fastapi.responses import JSONResponse
-# import db
-
-# app = FastAPI()
-
-
-# @app.post("/")
-# async def handle_request(request: Request):
-#     payload = await request.json()
-
-#     # Extract the necessary information from the payload
-#     # based on the structure of the WebhookRequest from Dialogflow
-#     intent = payload["queryResult"]["intent"]["displayName"]
-#     parameters = payload["queryResult"]["parameters"]
-#     output_contexts = payload["queryResult"]["outputContexts"]
-
-#     if intent == "track.order - context: ongoing-tracking":
-#         response = await track_order(parameters)  # Use await for async function
-#         return response
-
-#     return JSONResponse(content={"message": "This intent is not supported yet."})  # Default response
-
-
-# async def track_order(parameters: dict):
-#     order_id = parameters["order_id"]
-
-#     order_status = db.get_order_status(order_id)
-
-#     if order_status:
-#         fulfillment_text = f"The order status for order ID {order_id} is: {order_status}"
-#     else:
-#         fulfillment_text = f"No order found with order ID {order_id}"
-
-#     return JSONResponse(content={"fulfillmentText": fulfillment_text})
-
-# main.py
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import db  # Import the db module we just updated
+import utils
 
+
+inprogress_orders = {}
 app = FastAPI()
 
 @app.get("/")
@@ -128,20 +20,63 @@ async def handle_request(request: Request):
         payload = await request.json()
         intent = payload["queryResult"]["intent"]["displayName"]
         parameters = payload["queryResult"]["parameters"]
+        output_contexts = payload['queryResult']['outputContexts']
+        session_id=utils.extract_session_id(output_contexts[0]['name'])
 
-        if intent == "track.order - context: ongoing-tracking":
-            order_id = parameters["order_id"]
-            status = db.get_order_status(order_id)
+        intent_handler_dict = {
+        'Add Order': add_to_order,
+        # 'order.remove - context: ongoing-order': remove_from_order,
+        # 'order.complete - context: ongoing-order': complete_order,
+        # 'track.order - context: ongoing-tracking': track_order
+    }
+        return intent_handler_dict[intent](parameters,session_id)
+    
+
+        # if intent == "track.order - context: ongoing-tracking":
+        #     order_id = parameters["order_id"]
+        #     status = db.get_order_status(order_id)
             
-            if status:
-                fulfillment_text = f"The status for order ID {order_id} is: {status}."
-            else:
-                fulfillment_text = f"No order found with ID {order_id}."
+        #     if status:
+        #         fulfillment_text = f"The status for order ID {order_id} is: {status}."
+        #     else:
+        #         fulfillment_text = f"No order found with ID {order_id}."
 
-            return JSONResponse(content={"fulfillmentText": fulfillment_text})
+        #     return JSONResponse(content={"fulfillmentText": fulfillment_text})
         
-        return JSONResponse(content={"fulfillmentText": "Intent not recognized."})
+        # return JSONResponse(content={"fulfillmentText": "Intent not recognized."})
 
     except Exception as e:
         print(f"Error in handling request: {e}")
         return JSONResponse(content={"fulfillmentText": "An error occurred while processing your request."}, status_code=500)
+
+def add_to_order(parameters:dict, session_id:str):
+    food_items=parameters["FoodItems"]
+    quantities= parameters["number1"]
+        
+    if len(food_items) != len(quantities):
+        fulfillment_text = "Sorry I didn't understand. Can you please specify food items and quantities clearly?"
+    else:
+        new_food_dict = dict(zip(food_items, quantities))
+        if session_id in inprogress_orders:
+            current_food_dict= inprogress_orders[session_id]
+            current_food_dict.update(new_food_dict)
+        else:
+            inprogress_orders[session_id]=new_food_dict
+
+        order_str=utils.get_str_from_food_dict(inprogress_orders[session_id])
+
+        fulfillment_text=f"so far you have {order_str} in your cart do you need anythin else?"
+    return JSONResponse(content={"fulfillmentText": fulfillment_text})
+
+# def save_to_order():
+
+#     return
+
+
+
+# def complete_order(parameters: dict, session_id: str):
+#     if session_id not in inprogress_orders:
+#         fulfillment_text = "I'm having a trouble finding your order. Sorry! Can you place a new order please?"
+#     else:
+#         order = inprogress_orders[session_id]
+#         # order_id = save_to_db(order) 
