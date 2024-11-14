@@ -6,3 +6,4 @@ db1.py
 testdb.py
 # pycache
 __pycache__/
+*.pyc
