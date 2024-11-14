@@ -1,0 +1,8 @@
+# Environments
+.env
+#temp
+ngrok.exe
+db1.py
+testdb.py
+# pycache
+__pycache__/
