@@ -32,8 +32,8 @@ async def handle_request(request: Request):
             'Add Order': add_to_order,
             'Order Complete': complete_order,
             # Uncomment other intent handlers as implemented
-            # 'order.remove - context: ongoing-order': remove_from_order,
-            # 'track.order - context: ongoing-tracking': track_order
+            'Order Remove': remove_from_order,
+            'track.order - context: ongoing-tracking': track_order
         }
 
         # Call the corresponding intent handler function
@@ -116,6 +116,40 @@ def save_to_db(order: dict):
         cursor.close()
         connection.close()
 
+def remove_from_order(parameters: dict, session_id: str):
+    if session_id not in inprogress_orders:
+        return JSONResponse(content={
+            "fulfillmentText": "I'm having a trouble finding your order. Sorry! Can you place a new order please?"
+        })
+    
+    food_items = parameters["fooditems"]
+    current_order = inprogress_orders[session_id]
+
+    removed_items = []
+    no_such_items = []
+
+    for item in food_items:
+        if item not in current_order:
+            no_such_items.append(item)
+        else:
+            removed_items.append(item)
+            del current_order[item]
+
+    if len(removed_items) > 0:
+        fulfillment_text = f'Removed {",".join(removed_items)} from your order!'
+
+    if len(no_such_items) > 0:
+        fulfillment_text = f' Your current order does not have {",".join(no_such_items)}'
+
+    if len(current_order.keys()) == 0:
+        fulfillment_text += " Your order is empty!"
+    else:
+        order_str = utils.get_str_from_food_dict(current_order)
+        fulfillment_text += f" Here is what is left in your order: {order_str}"
+
+    return JSONResponse(content={
+        "fulfillmentText": fulfillment_text
+    })
 
 # Function to handle 'Complete Order' intent
 def complete_order(parameters: dict, session_id: str):
@@ -139,3 +173,14 @@ def complete_order(parameters: dict, session_id: str):
         print(f"Error in complete_order: {e}")
         return JSONResponse(content={"fulfillmentText": "An error occurred while completing your order."})
 
+def track_order(parameters: dict, session_id: str):
+    order_id = int(parameters['order_id'])
+    order_status = db.get_order_status(order_id)
+    if order_status:
+        fulfillment_text = f"The order status for order id: {order_id} is: {order_status}"
+    else:
+        fulfillment_text = f"No order found with order id: {order_id}"
+
+    return JSONResponse(content={
+        "fulfillmentText": fulfillment_text
+    })

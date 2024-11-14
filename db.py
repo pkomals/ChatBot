@@ -1,4 +1,5 @@
 import pymysql
+
 # global cnx
 
 # Define a function to get the database connection
